@@ -8,11 +8,15 @@ import requests
 import numpy as np
 import cv2
 import mediapipe as mp
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from PIL import Image, ImageOps
 
 from shopify_fetch import get_clothes
+
+ROBOFLOW_API_KEY = "fb8FDC2lnqTjyHhWeQF2"
+ROBOFLOW_MODEL_URL = "https://serverless.roboflow.com/gender-classification-wadex/1"  # replace with actual URL
+
 
 app = FastAPI()
 
@@ -43,6 +47,46 @@ def download_cloth_to_png(url: str, out_path: str) -> str:
     cloth.save(out_path, format="PNG")
     return out_path
 
+def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
+    """
+    Send the uploaded image to Roboflow and return 'men' or 'women'
+    based on the model's prediction. Returns None on failure.
+    """
+    try:
+        # Encode image as JPEG in memory
+        success, encoded_img = cv2.imencode(".jpg", img_bgr)
+        if not success:
+            print("Roboflow: could not encode image")
+            return None
+
+        files = {
+            "file": ("image.jpg", encoded_img.tobytes(), "image/jpeg")
+        }
+        params = {
+            "api_key": ROBOFLOW_API_KEY
+        }
+
+        resp = requests.post(ROBOFLOW_MODEL_URL, files=files, params=params, timeout=15)
+        data = resp.json()
+        print("Roboflow response:", data)
+
+        # Adapt this parsing to Roboflow's exact JSON format
+        # Example: for a classification model with 'predictions'
+        if "predictions" in data and data["predictions"]:
+            top_pred = data["predictions"][0]
+            class_name = top_pred.get("class", "").lower()
+
+            if "male" in class_name or "men" in class_name:
+                return "men"
+            if "female" in class_name or "woman" in class_name:
+                return "women"
+
+        return None
+    except Exception as e:
+        print("Roboflow error:", e)
+        return None
+
+
 
 def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str) -> np.ndarray:
     # Convert background to RGBA
@@ -62,61 +106,42 @@ def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str) -> np.ndarra
     Lh = lm[mp_pose.PoseLandmark.LEFT_HIP]
     Rh = lm[mp_pose.PoseLandmark.RIGHT_HIP]
 
-    # ---- neck approximation: from left shoulder, shifted up ----
-    neck_landmark = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
-    neck_x, neck_y = int(neck_landmark.x * w), int(neck_landmark.y * h)
-    neck_y = int(neck_y - 0.12 * h)
-
     Lsx, Lsy = int(Ls.x * w), int(Ls.y * h)
     Rsx, Rsy = int(Rs.x * w), int(Rs.y * h)
     Lhx, Lhy = int(Lh.x * w), int(Lh.y * h)
     Rhx, Rhy = int(Rh.x * w), int(Rh.y * h)
 
-    # ---------- BODY-BASED SIZE ----------
+    # Distances
     shoulder_width = float(np.hypot(Rsx - Lsx, Rsy - Lsy))
     hip_y = int((Lhy + Rhy) / 2)
-    torso_height = max(hip_y - neck_y, 1)
+    shoulder_y = int((Lsy + Rsy) / 2)
+    torso_height = hip_y - shoulder_y
 
-    # Clamp target size relative to image
-    min_width = int(w * 0.15)
-    max_width = int(w * 0.7)
-    min_height = int(h * 0.15)
-    max_height = int(h * 0.7)
+    # Target shirt size (you can tweak these 2 factors)
+    width_factor = 2.0     # 1.8–2.2 depending on how wide you want
+    height_factor = 1.2    # 1.1–1.3 depending on how long you want
 
-    # Wider and longer shirt
-    target_width = int(shoulder_width * 1.9)
-    target_width = max(min(target_width, max_width), min_width)
+    tshirt_width = int(shoulder_width * width_factor)
+    tshirt_height = int(torso_height * height_factor)
 
-    target_height = int(torso_height * 1.3)
-    target_height = max(min(target_height, max_height), min_height)
-
-    # ---------- LOAD & RESIZE CLOTH ----------
+    # Load cloth WITH alpha
     cloth = Image.open(cloth_png_path).convert("RGBA")
     cloth = ImageOps.crop(cloth, border=2)
 
+    # Resize while keeping aspect ratio, based on width
     orig_w, orig_h = cloth.size
-    scale = target_width / max(orig_w, 1)
-    new_w = target_width
+    scale = tshirt_width / orig_w
     new_h = int(orig_h * scale)
+    cloth_resized = cloth.resize((tshirt_width, new_h), Image.Resampling.LANCZOS)
 
-    # Crop or clamp to target height so it ends above hips
-    if new_h > target_height:
-        new_h = target_height
-    cloth_resized = cloth.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    # If too tall, crop bottom
+    if new_h > tshirt_height:
+        cloth_resized = cloth_resized.crop((0, 0, tshirt_width, tshirt_height))
 
-    # ---------- POSITION ON BODY ----------
-    shoulder_y = int((Lsy + Rsy) / 2)
+    # Position: top of shirt just above shoulders
     center_x = int((Lsx + Rsx) / 2)
-
-    paste_x = int(center_x - new_w / 2)
-
-    # Collar close to neck
-    collar_offset = int(torso_height * 0.02)
-    paste_y = int(neck_y + collar_offset)
-
-    # Keep inside image bounds
-    paste_x = max(min(paste_x, w - new_w), 0)
-    paste_y = max(min(paste_y, h - new_h), 0)
+    paste_x = int(center_x - tshirt_width / 2)
+    paste_y = int(shoulder_y - tshirt_height * 0.15)  # small negative to cover collar
 
     base = pil_img.copy()
     base.paste(cloth_resized, (paste_x, paste_y), mask=cloth_resized)
@@ -125,12 +150,14 @@ def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str) -> np.ndarra
     return result_bgr
 
 
-# ------------ TRY-ON ENDPOINT -------------
+
 @app.post("/tryon")
 async def tryon_api(
     file: UploadFile = File(...),
     cloth_url: Optional[str] = Form(None),
+    gender: Optional[str] = Form("men"),
 ):
+    # 1) Read user image
     try:
         img = read_imagefile(file)
     except Exception as e:
@@ -139,19 +166,24 @@ async def tryon_api(
             status_code=400,
         )
 
-    # If a Shopify cloth URL is provided, download it; otherwise, use default local cloth
+    # 2) Require cloth_url (user selects cloth after classify)
+    if not cloth_url:
+        return JSONResponse(
+            {"error": "No cloth selected yet"},
+            status_code=400,
+        )
+
+    # 3) Download cloth
     try:
-        if cloth_url:
-            tmp_path = "clothes/_tmp_from_shopify.png"
-            cloth_path = download_cloth_to_png(cloth_url, tmp_path)
-        else:
-            cloth_path = CLOTHES_PATH
+        tmp_path = "clothes/_tmp_from_shopify.png"
+        cloth_path = download_cloth_to_png(cloth_url, tmp_path)
     except Exception as e:
         return JSONResponse(
             {"error": "Could not load cloth image", "details": str(e)},
             status_code=400,
         )
 
+    # 4) Overlay
     try:
         out = overlay_cloth_on_image(img, cloth_path)
     except Exception as e:
@@ -164,6 +196,8 @@ async def tryon_api(
     byte_im = im_buf_arr.tobytes()
     b64 = base64.b64encode(byte_im).decode("utf-8")
     return {"image_base64": b64}
+
+
 
 
 @app.get("/clothes-list")
@@ -185,5 +219,29 @@ async def root():
 
 
 @app.get("/clothes")
-async def clothes_api():
-    return get_clothes()
+async def clothes_api(gender: str = Query("men")):
+    # gender will be "men" or "women"
+    return get_clothes(gender)
+
+
+from fastapi import FastAPI, File, UploadFile, Form, Query
+
+@app.post("/classify-gender")
+async def classify_gender(file: UploadFile = File(...)):
+    # Read user image
+    try:
+        img = read_imagefile(file)
+    except Exception as e:
+        return JSONResponse(
+            {"error": "Could not read image", "details": str(e)},
+            status_code=400,
+        )
+
+    # Call Roboflow
+    auto_gender = detect_gender_with_roboflow(img)
+    if auto_gender not in ["men", "women"]:
+        # default / unknown
+        auto_gender = "men"
+
+    print("Classified gender:", auto_gender)
+    return {"gender": auto_gender}
