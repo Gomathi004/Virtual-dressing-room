@@ -1,29 +1,28 @@
-# shopify_fetch.py
 import requests
 
 SHOPIFY_STORE_URL = "https://virtualdressingroom.myshopify.com/api/2025-10/graphql.json"
+STOREFRONT_TOKEN = "c86b17e92460296b5450bb4531762b96"
 
-# Storefront API access token (NOT Admin token)
-STOREFRONT_TOKEN = "c86b17e92460296b5450bb4531762b96"  # replace
+def get_clothes(gender: str = "men"):
+    tag = "men" if gender == "men" else "women"
 
-def get_clothes():
-    query = """
-    {
-      products(first: 14) {
-        edges {
-          node {
+    query = f"""
+    {{
+      products(first: 20, query: "tag:{tag}") {{
+        edges {{
+          node {{
             title
-            images(first: 14) {
-              edges {
-                node {
+            images(first: 14) {{
+              edges {{
+                node {{
                   url
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+                }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
     """
 
     headers = {
@@ -35,20 +34,27 @@ def get_clothes():
         SHOPIFY_STORE_URL,
         headers=headers,
         json={"query": query},
+        timeout=15,
     )
 
     data = response.json()
+    print("Shopify response:", data)
 
-    if "data" not in data or "products" not in data["data"]:
-        print("Error: Shopify returned no product data.")
-        print(data)
+    if "errors" in data:
+        print("GraphQL errors:", data["errors"])
+        return []
+
+    if "data" not in data or data["data"] is None or "products" not in data["data"]:
+        print("Error: Shopify returned no product data structure.")
         return []
 
     clothes = []
     try:
         for product in data["data"]["products"]["edges"]:
             for img in product["node"]["images"]["edges"]:
-                clothes.append(img["node"]["url"])
+                url = img["node"].get("url")
+                if url:
+                    clothes.append(url)
     except Exception as e:
         print("Parsing error:", e)
         return []
