@@ -88,7 +88,8 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
 
 
 
-def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str) -> np.ndarray:
+def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str, gender: str = "men") -> np.ndarray:
+
     # Convert background to RGBA
     img_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(img_rgb).convert("RGBA")
@@ -111,18 +112,23 @@ def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str) -> np.ndarra
     Lhx, Lhy = int(Lh.x * w), int(Lh.y * h)
     Rhx, Rhy = int(Rh.x * w), int(Rh.y * h)
 
-    # Distances
+       # Distances
     shoulder_width = float(np.hypot(Rsx - Lsx, Rsy - Lsy))
     hip_y = int((Lhy + Rhy) / 2)
     shoulder_y = int((Lsy + Rsy) / 2)
     torso_height = hip_y - shoulder_y
 
-    # Target shirt size (you can tweak these 2 factors)
-    width_factor = 2.0     # 1.8–2.2 depending on how wide you want
-    height_factor = 1.2    # 1.1–1.3 depending on how long you want
+    # Target shirt/dress size
+    if gender == "women":
+        width_factor = 2.0     # similar width
+        height_factor = 2.2    # extend down toward knees
+    else:  # men
+        width_factor = 2.0
+        height_factor = 1.2    # just torso length
 
     tshirt_width = int(shoulder_width * width_factor)
     tshirt_height = int(torso_height * height_factor)
+
 
     # Load cloth WITH alpha
     cloth = Image.open(cloth_png_path).convert("RGBA")
@@ -185,7 +191,8 @@ async def tryon_api(
 
     # 4) Overlay
     try:
-        out = overlay_cloth_on_image(img, cloth_path)
+        out = overlay_cloth_on_image(img, cloth_path, gender)
+
     except Exception as e:
         return JSONResponse(
             {"error": "Processing failed", "details": str(e)},
