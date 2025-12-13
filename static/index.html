@@ -74,12 +74,23 @@
 <button id="classifybtn">Classify</button>
 <button id="trybtn">Try On</button>
 
-<h3>Choose a T-Shirt</h3>
+<h3>Choose a outfit</h3>
 <div id="clothes-bar"></div>
+<div id="statusMessage" style="margin-top:10px; font-weight:bold;"></div>
+
 
 <script>
 let selectedCloth = null;
 let currentGender = "men";  // last classified gender (default)
+
+// -------- Show preview immediately after upload -------- //
+document.getElementById("inputImage").onchange = function (e) {
+    const file = e.target.files[0];
+    if (file) {
+        document.getElementById("userPreview").src =
+            URL.createObjectURL(file);
+    }
+};
 
 // -------- Load Shopify Images for a gender -------- //
 async function loadClothes(gender) {
@@ -106,17 +117,19 @@ async function loadClothes(gender) {
     });
 }
 
+const statusDiv = document.getElementById("statusMessage");
+
 // -------- Classify button -------- //
 document.getElementById("classifybtn").onclick = async function () {
     let fileInput = document.getElementById("inputImage");
     if (!fileInput.files.length) {
-        alert("Please upload your photo first.");
+        statusDiv.style.color = "red";
+        statusDiv.textContent = "Please upload your photo first.";
         return;
     }
 
-    // show preview
-    document.getElementById("userPreview").src =
-        URL.createObjectURL(fileInput.files[0]);
+    statusDiv.style.color = "black";
+    statusDiv.textContent = "Detecting gender, please wait...";
 
     let form = new FormData();
     form.append("file", fileInput.files[0]);
@@ -130,12 +143,16 @@ document.getElementById("classifybtn").onclick = async function () {
     if (data.gender) {
         currentGender = data.gender;
         await loadClothes(currentGender);
-        alert("Detected: " + currentGender +
-              ". Please choose a T-shirt below, then click Try On.");
+        statusDiv.style.color = "green";
+        statusDiv.textContent =
+            "Detected: " + currentGender +
+            ". Choose a outfit below, then click Try On.";
     } else {
-        alert("Could not classify gender.");
+        statusDiv.style.color = "red";
+        statusDiv.textContent = "Could not classify gender. Please try again.";
     }
 };
+
 
 // -------- Try-On button -------- //
 document.getElementById("trybtn").onclick = async function () {
@@ -146,7 +163,7 @@ document.getElementById("trybtn").onclick = async function () {
         return;
     }
     if (!selectedCloth) {
-        alert("Please classify first, select a T-shirt, then click Try On.");
+        alert("Please classify first, select a outfit, then click Try On.");
         return;
     }
 
