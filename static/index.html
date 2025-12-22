@@ -4,189 +4,263 @@
     <title>Virtual Dressing Room</title>
     <style>
         body { font-family: Arial; margin: 20px; }
-        .container { display: flex; gap: 20px; }
-        .box {
-            width: 48%;
-            border: 1px solid #ccc;
-            padding: 10px;
-            text-align: center;
+
+        /* main row: upload box | result box | bars column */
+        .main-layout {
+            display: flex;
+            align-items: flex-start;
+            gap: 72px;
         }
+
+        /* LEFT: upload + result side by side */
+        .left-row {
+            display: flex;
+            gap: 12px;
+            flex: 1 1 0;
+            max-width: 70%;
+        }
+
+        .box {
+            border: 1px solid #d0d0d0;
+            padding: 8px;
+            text-align: center;
+            background: #fafafa;
+            border-radius: 6px;
+            flex: 1 1 0;              /* upload and result take equal width */
+        }
+
+        .box h3 {
+            margin: 0 0 4px 0;
+            font-size: 18px;
+        }
+
         .box img {
             max-width: 100%;
-            max-height: 400px;
+            max-height: 360px;   /* tall but fixed so layout is stable */
             width: auto;
             height: auto;
             object-fit: contain;
             display: block;
             margin: 0 auto;
             background: #f5f5f5;
+            border-radius: 4px;
         }
-        #clothes-bar {
+
+        /* RIGHT: bars stacked, fixed width so they never move */
+        .right-column {
             display: flex;
-            gap: 15px;
-            overflow-x: scroll;
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            white-space: nowrap;
+            flex-direction: column;
+            gap: 10px;
+            flex: 0 0 260px;     /* adjust to make bars a bit leaner/wider */
         }
-        #clothes-bar img {
-            height: 150px;
+
+        .bar-box {
+            background: #fcfcfc;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 6px;
+        }
+
+        .bar-box h3 {
+            margin: 0 0 4px 0;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        #tops-bar, #bottoms-bar {
+            border: 1px solid #e0e0e0;
+            padding: 3px;        /* less padding, more space for images */
+            height: 190px;       /* both bars fully visible without page scroll */
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            background: #ffffff;
+        }
+
+        #tops-bar img,
+        #bottoms-bar img {
+            height: 95px;        /* larger clothes thumbnails */
             width: auto;
             object-fit: contain;
             cursor: pointer;
-            border-radius: 10px;
+            border-radius: 4px;
             border: 2px solid transparent;
+            background: #f8f8f8;
         }
-        #clothes-bar img.selected {
-            border-color: blue;
+
+        #tops-bar img.selected,
+        #bottoms-bar img.selected {
+            border-color: #1976d2;
         }
-        #classifybtn, #trybtn {
-            margin-top: 15px;
-            margin-right: 10px;
-            padding: 10px 25px;
-            font-size: 16px;
-            cursor: pointer;
-            background: black;
-            color: white;
-            border-radius: 5px;
+
+        #statusMessage {
+            margin-top: 10px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            .left-row, .right-column {
+                max-width: 100%;
+            }
+            #tops-bar, #bottoms-bar {
+                flex-direction: row;
+                height: auto;
+                overflow-x: auto;
+                overflow-y: hidden;
+            }
+            #tops-bar img,
+            #bottoms-bar img {
+                height: 110px;
+            }
         }
     </style>
 </head>
-
 <body>
-
 <h2>Virtual Dressing Room</h2>
 
-<div class="container">
-    <div class="box">
-        <h3>Upload Your Image</h3>
-        <input type="file" id="inputImage" accept="image/*"><br><br>
-        <img id="userPreview">
+<div class="main-layout">
+  <!-- LEFT: upload + result in one row -->
+  <div class="left-row">
+    <div class="box" id="upload-box">
+      <h3>Upload Your Image</h3>
+      <input type="file" id="inputImage" accept="image/*"><br><br>
+      <img id="userPreview">
     </div>
 
-    <div class="box">
-        <h3>Result</h3>
-        <img id="resultImage">
+    <div class="box" id="result-box">
+      <h3>Result</h3>
+      <img id="resultImage">
     </div>
+  </div>
+
+  <!-- RIGHT: bars stacked -->
+  <div class="right-column">
+    <div class="bar-box" id="tops-container">
+      <h3>Choose a Top</h3>
+      <div id="tops-bar"></div>
+    </div>
+
+    <div class="bar-box" id="bottoms-container">
+      <h3>Choose a Bottom</h3>
+      <div id="bottoms-bar"></div>
+    </div>
+  </div>
 </div>
 
-<button id="classifybtn">Classify</button>
-<button id="trybtn">Try On</button>
-
-<h3>Choose a outfit</h3>
-<div id="clothes-bar"></div>
-<div id="statusMessage" style="margin-top:10px; font-weight:bold;"></div>
-
+<div id="statusMessage"></div>
 
 <script>
-let selectedCloth = null;
-let currentGender = "men";  // last classified gender (default)
+let selectedTop = null;
+let selectedBottom = null;
+let currentGender = "men";
+let currentFile = null;
 
-// -------- Show preview immediately after upload -------- //
-document.getElementById("inputImage").onchange = function (e) {
-    const file = e.target.files[0];
-    if (file) {
-        document.getElementById("userPreview").src =
-            URL.createObjectURL(file);
-    }
-};
+const statusDiv = document.getElementById("statusMessage");
 
-// -------- Load Shopify Images for a gender -------- //
-async function loadClothes(gender) {
-    console.log("loadClothes called with", gender);
-    const res = await fetch("/clothes?gender=" + encodeURIComponent(gender));
+async function classifyGenderAndLoadClothes(file) {
+    const form = new FormData();
+    form.append("file", file);
+
+    statusDiv.style.color = "black";
+    statusDiv.textContent = "Detecting gender...";
+
+    const res = await fetch("/classify-gender", { method: "POST", body: form });
     const data = await res.json();
 
-    const bar = document.getElementById("clothes-bar");
+    if (!data.gender) {
+        statusDiv.style.color = "red";
+        statusDiv.textContent = "Could not classify gender.";
+        return;
+    }
+
+    currentGender = data.gender;
+    statusDiv.style.color = "green";
+    statusDiv.textContent =
+        "Detected: " + currentGender + ". Tap a top or bottom to try it on.";
+
+    await loadClothesBar(currentGender, "top");
+    await loadClothesBar(currentGender, "bottom");
+}
+
+async function loadClothesBar(gender, kind) {
+    const res = await fetch(`/clothes?gender=${encodeURIComponent(gender)}&kind=${encodeURIComponent(kind)}`);
+    const data = await res.json();
+
+    const barId = kind === "bottom" ? "bottoms-bar" : "tops-bar";
+    const bar = document.getElementById(barId);
     bar.innerHTML = "";
-    selectedCloth = null;
 
     data.forEach(url => {
         const img = document.createElement("img");
         img.src = url;
 
-        img.onclick = () => {
-            document.querySelectorAll("#clothes-bar img")
-                .forEach(i => i.classList.remove("selected"));
+        img.onclick = async () => {
+            bar.querySelectorAll("img").forEach(i => i.classList.remove("selected"));
             img.classList.add("selected");
-            selectedCloth = url;
+
+            if (kind === "bottom") selectedBottom = url;
+            else selectedTop = url;
+
+            await autoTryOn();
         };
 
         bar.appendChild(img);
     });
 }
 
-const statusDiv = document.getElementById("statusMessage");
-
-// -------- Classify button -------- //
-document.getElementById("classifybtn").onclick = async function () {
-    let fileInput = document.getElementById("inputImage");
-    if (!fileInput.files.length) {
+async function autoTryOn() {
+    if (!currentFile) {
         statusDiv.style.color = "red";
-        statusDiv.textContent = "Please upload your photo first.";
+        statusDiv.textContent = "Upload your photo first.";
         return;
     }
+    if (!selectedTop && !selectedBottom) return;
 
-    statusDiv.style.color = "black";
-    statusDiv.textContent = "Detecting gender, please wait...";
-
-    let form = new FormData();
-    form.append("file", fileInput.files[0]);
-
-    const res = await fetch("/classify-gender", {
-        method: "POST",
-        body: form
-    });
-    const data = await res.json();
-
-    if (data.gender) {
-        currentGender = data.gender;
-        await loadClothes(currentGender);
-        statusDiv.style.color = "green";
-        statusDiv.textContent =
-            "Detected: " + currentGender +
-            ". Choose a outfit below, then click Try On.";
-    } else {
-        statusDiv.style.color = "red";
-        statusDiv.textContent = "Could not classify gender. Please try again.";
-    }
-};
-
-
-// -------- Try-On button -------- //
-document.getElementById("trybtn").onclick = async function () {
-    let fileInput = document.getElementById("inputImage");
-
-    if (!fileInput.files.length) {
-        alert("Please upload your photo first.");
-        return;
-    }
-    if (!selectedCloth) {
-        alert("Please classify first, select a outfit, then click Try On.");
-        return;
-    }
-
-    let form = new FormData();
-    form.append("file", fileInput.files[0]);
-    form.append("cloth_url", selectedCloth);
+    const form = new FormData();
+    form.append("file", currentFile);
+    if (selectedTop) form.append("top_url", selectedTop);
+    if (selectedBottom) form.append("bottom_url", selectedBottom);
     form.append("gender", currentGender);
 
-    const res = await fetch("/tryon", {
-        method: "POST",
-        body: form
-    });
+    statusDiv.style.color = "black";
+    statusDiv.textContent = "Applying outfit...";
 
+    const res = await fetch("/tryon", { method: "POST", body: form });
     const data = await res.json();
 
     if (data.image_base64) {
         document.getElementById("resultImage").src =
             "data:image/png;base64," + data.image_base64;
+        statusDiv.style.color = "green";
+        statusDiv.textContent = "Outfit applied. Tap another top/bottom to change.";
     } else {
+        statusDiv.style.color = "red";
+        statusDiv.textContent = "Error applying outfit.";
         alert("Error: " + JSON.stringify(data));
     }
+}
+
+document.getElementById("inputImage").onchange = async function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    currentFile = file;
+    document.getElementById("userPreview").src =
+        URL.createObjectURL(file);
+
+    selectedTop = null;
+    selectedBottom = null;
+    document.getElementById("tops-bar").innerHTML = "";
+    document.getElementById("bottoms-bar").innerHTML = "";
+    document.getElementById("resultImage").src = "";
+
+    await classifyGenderAndLoadClothes(file);
 };
 </script>
-
 </body>
 </html>
