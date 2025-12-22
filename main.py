@@ -2,7 +2,7 @@
 import io
 import base64
 import os
-from typing import Optional
+from typing import Optional, List, Dict
 
 import requests
 import numpy as np
@@ -12,17 +12,16 @@ from fastapi import FastAPI, File, UploadFile, Form, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from PIL import Image, ImageOps
 
-from shopify_fetch import get_clothes
+from shopify_fetch import get_clothes  # get_clothes(gender, kind) -> list[str]
 
 ROBOFLOW_API_KEY = "fb8FDC2lnqTjyHhWeQF2"
-ROBOFLOW_MODEL_URL = "https://serverless.roboflow.com/gender-classification-wadex/1"  # replace with actual URL
+ROBOFLOW_MODEL_URL = "https://serverless.roboflow.com/gender-classification-wadex/1"
 
 app = FastAPI()
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
 
-# Default cloth path (local transparent PNG)
 CLOTHES_PATH = "clothes/tshirt1.png"
 
 
@@ -34,36 +33,25 @@ def read_imagefile(uploaded_file: UploadFile) -> np.ndarray:
 
 
 def download_cloth_to_png(url: str, out_path: str) -> str:
-    """
-    Download cloth image from Shopify URL and save as PNG with alpha preserved.
-    Uses PIL instead of cv2 to avoid losing transparency.
-    """
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     img_bytes = io.BytesIO(resp.content)
 
     cloth = Image.open(img_bytes).convert("RGBA")
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     cloth.save(out_path, format="PNG")
     return out_path
 
 
 def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
-    """
-    Send the uploaded image to Roboflow and return 'men' or 'women'
-    based on the model's prediction. Returns None on failure.
-    """
     try:
         success, encoded_img = cv2.imencode(".jpg", img_bgr)
         if not success:
             print("Roboflow: could not encode image")
             return None
 
-        files = {
-            "file": ("image.jpg", encoded_img.tobytes(), "image/jpeg")
-        }
-        params = {
-            "api_key": ROBOFLOW_API_KEY
-        }
+        files = {"file": ("image.jpg", encoded_img.tobytes(), "image/jpeg")}
+        params = {"api_key": ROBOFLOW_API_KEY}
 
         resp = requests.post(ROBOFLOW_MODEL_URL, files=files, params=params, timeout=15)
         data = resp.json()
@@ -146,12 +134,6 @@ def overlay_bottom_on_image(
     cloth_png_path: str,
     gender: str = "men",
 ) -> Image.Image:
-    """
-    Overlay pants roughly matching the outer jeans:
-    - waistband slightly above hip landmarks
-    - hem slightly below ankle landmarks
-    - width ~ thigh width (wider than hip distance)
-    """
     h, w = img_rgb.shape[:2]
     results = pose.process(img_rgb)
     if not results.pose_landmarks:
@@ -170,24 +152,18 @@ def overlay_bottom_on_image(
     Lky, Rky = int(Lk.y * h), int(Rk.y * h)
     Lay, Ray = int(La.y * h), int(Ra.y * h)
 
-    # Use mid‑points
     hip_y = int((Lhy + Rhy) / 2)
     knee_y = int((Lky + Rky) / 2)
     ankle_y = int((Lay + Ray) / 2)
 
-    # Use distance between knees for width (closer to thigh width than hip distance)
-    knee_width = float(abs(Rhx - Lhx)) * 1.1  # small extra factor
-    # pants should be clearly wider than that
-    # make women’s pants a bit wider
+    knee_width = float(abs(Rhx - Lhx)) * 1.1
     if gender == "men":
         width_factor = 4.2
-    else:  # women
-        width_factor = 3.2   # you can tweak 3.0–3.2 if needed
+    else:
+        width_factor = 3.2
 
     pant_width_target = int(knee_width * width_factor)
 
-
-    # Height: from a bit above hip to a bit below ankle
     waistband_y = max(0, int(hip_y - 0.08 * h))
     hem_y = min(h, int(ankle_y + 0.03 * h))
     pant_height = max(20, hem_y - waistband_y)
@@ -197,18 +173,15 @@ def overlay_bottom_on_image(
 
     orig_w, orig_h = cloth.size
 
-    # Scale by height so it spans waistband->hem
     scale_h = pant_height / orig_h
     new_w = int(orig_w * scale_h)
     new_h = pant_height
     pant_resized = cloth.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
-    # Cap max width, but never shrink more than target (to avoid being too skinny)
     if new_w > pant_width_target:
         new_w = pant_width_target
         pant_resized = pant_resized.resize((new_w, pant_height), Image.Resampling.LANCZOS)
 
-    # Center between hips
     center_x = int((Lhx + Rhx) / 2)
     paste_x = int(center_x - new_w / 2)
     paste_y = waistband_y
@@ -216,7 +189,6 @@ def overlay_bottom_on_image(
     base = pil_img.copy()
     base.paste(pant_resized, (paste_x, paste_y), mask=pant_resized)
     return base
-
 
 
 def overlay_outfit_on_image(
@@ -228,17 +200,13 @@ def overlay_outfit_on_image(
     img_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(img_rgb).convert("RGBA")
 
-    # 1) draw bottom first
     if bottom_png_path:
         pil_img = overlay_bottom_on_image(pil_img, img_rgb, bottom_png_path, gender)
-
-    # 2) then draw top so it appears over the pants
     if top_png_path:
         pil_img = overlay_top_on_image(pil_img, img_rgb, top_png_path, gender)
 
     result_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGBA2BGR)
     return result_bgr
-
 
 
 @app.post("/tryon")
@@ -248,7 +216,6 @@ async def tryon_api(
     bottom_url: Optional[str] = Form(None),
     gender: Optional[str] = Form("men"),
 ):
-    # 1) Read user image
     try:
         img = read_imagefile(file)
     except Exception as e:
@@ -289,6 +256,23 @@ async def tryon_api(
     return {"image_base64": b64}
 
 
+@app.get("/clothes")
+async def clothes_api(gender: str = Query("men")) -> List[Dict[str, str]]:
+    """
+    Return both tops and bottoms for this gender.
+    Each item: {"url": "...", "type": "top" or "bottom"}
+    """
+    tops = get_clothes(gender, "top")
+    bottoms = get_clothes(gender, "bottom")
+
+    items: List[Dict[str, str]] = []
+    for url in tops:
+        items.append({"url": url, "type": "top"})
+    for url in bottoms:
+        items.append({"url": url, "type": "bottom"})
+    return items
+
+
 @app.get("/clothes-list")
 async def clothes_list():
     files = os.listdir("clothes")
@@ -305,14 +289,6 @@ async def clothes_file(filename: str):
 async def root():
     with open("static/index.html", "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read(), status_code=200)
-
-
-@app.get("/clothes")
-async def clothes_api(
-    gender: str = Query("men"),
-    kind: str = Query("top"),  # 'top' or 'bottom'
-):
-    return get_clothes(gender, kind)
 
 
 @app.post("/classify-gender")
