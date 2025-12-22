@@ -17,7 +17,6 @@ from shopify_fetch import get_clothes
 ROBOFLOW_API_KEY = "fb8FDC2lnqTjyHhWeQF2"
 ROBOFLOW_MODEL_URL = "https://serverless.roboflow.com/gender-classification-wadex/1"  # replace with actual URL
 
-
 app = FastAPI()
 
 mp_pose = mp.solutions.pose
@@ -47,13 +46,13 @@ def download_cloth_to_png(url: str, out_path: str) -> str:
     cloth.save(out_path, format="PNG")
     return out_path
 
+
 def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
     """
     Send the uploaded image to Roboflow and return 'men' or 'women'
     based on the model's prediction. Returns None on failure.
     """
     try:
-        # Encode image as JPEG in memory
         success, encoded_img = cv2.imencode(".jpg", img_bgr)
         if not success:
             print("Roboflow: could not encode image")
@@ -70,8 +69,6 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
         data = resp.json()
         print("Roboflow response:", data)
 
-        # Adapt this parsing to Roboflow's exact JSON format
-        # Example: for a classification model with 'predictions'
         if "predictions" in data and data["predictions"]:
             top_pred = data["predictions"][0]
             class_name = top_pred.get("class", "").lower()
@@ -87,21 +84,18 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
         return None
 
 
-
-def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str, gender: str = "men") -> np.ndarray:
-
-    # Convert background to RGBA
-    img_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
-    pil_img = Image.fromarray(img_rgb).convert("RGBA")
-
+def overlay_top_on_image(
+    pil_img: Image.Image,
+    img_rgb: np.ndarray,
+    cloth_png_path: str,
+    gender: str = "men",
+) -> Image.Image:
+    h, w = img_rgb.shape[:2]
     results = pose.process(img_rgb)
     if not results.pose_landmarks:
-        return bg_bgr
+        return pil_img
 
-    h, w = img_rgb.shape[:2]
     lm = results.pose_landmarks.landmark
-
-    # Key points
     Ls = lm[mp_pose.PoseLandmark.LEFT_SHOULDER]
     Rs = lm[mp_pose.PoseLandmark.RIGHT_SHOULDER]
     Lh = lm[mp_pose.PoseLandmark.LEFT_HIP]
@@ -109,50 +103,140 @@ def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str, gender: str 
 
     Lsx, Lsy = int(Ls.x * w), int(Ls.y * h)
     Rsx, Rsy = int(Rs.x * w), int(Rs.y * h)
-    Lhx, Lhy = int(Lh.x * w), int(Lh.y * h)
-    Rhx, Rhy = int(Rh.x * w), int(Rh.y * h)
+    Lhy, Rhy = int(Lh.y * h), int(Rh.y * h)
 
-       # Distances
     shoulder_width = float(np.hypot(Rsx - Lsx, Rsy - Lsy))
     hip_y = int((Lhy + Rhy) / 2)
     shoulder_y = int((Lsy + Rsy) / 2)
     torso_height = hip_y - shoulder_y
 
-    # Target shirt/dress size
     if gender == "women":
-        width_factor = 2.0     # similar width
-        height_factor = 2.2    # extend down toward knees
-    else:  # men
         width_factor = 2.0
-        height_factor = 1.2    # just torso length
+        height_factor = 2.2
+    else:
+        width_factor = 2.0
+        height_factor = 1.2
 
     tshirt_width = int(shoulder_width * width_factor)
     tshirt_height = int(torso_height * height_factor)
 
-
-    # Load cloth WITH alpha
     cloth = Image.open(cloth_png_path).convert("RGBA")
     cloth = ImageOps.crop(cloth, border=2)
 
-    # Resize while keeping aspect ratio, based on width
     orig_w, orig_h = cloth.size
     scale = tshirt_width / orig_w
     new_h = int(orig_h * scale)
     cloth_resized = cloth.resize((tshirt_width, new_h), Image.Resampling.LANCZOS)
 
-    # If too tall, crop bottom
     if new_h > tshirt_height:
         cloth_resized = cloth_resized.crop((0, 0, tshirt_width, tshirt_height))
 
-    # Position: top of shirt just above shoulders
     center_x = int((Lsx + Rsx) / 2)
     paste_x = int(center_x - tshirt_width / 2)
-    paste_y = int(shoulder_y - tshirt_height * 0.15)  # small negative to cover collar
+    paste_y = int(shoulder_y - tshirt_height * 0.15)
 
     base = pil_img.copy()
     base.paste(cloth_resized, (paste_x, paste_y), mask=cloth_resized)
+    return base
 
-    result_bgr = cv2.cvtColor(np.array(base), cv2.COLOR_RGBA2BGR)
+
+def overlay_bottom_on_image(
+    pil_img: Image.Image,
+    img_rgb: np.ndarray,
+    cloth_png_path: str,
+    gender: str = "men",
+) -> Image.Image:
+    """
+    Overlay pants roughly matching the outer jeans:
+    - waistband slightly above hip landmarks
+    - hem slightly below ankle landmarks
+    - width ~ thigh width (wider than hip distance)
+    """
+    h, w = img_rgb.shape[:2]
+    results = pose.process(img_rgb)
+    if not results.pose_landmarks:
+        return pil_img
+
+    lm = results.pose_landmarks.landmark
+    Lh = lm[mp_pose.PoseLandmark.LEFT_HIP]
+    Rh = lm[mp_pose.PoseLandmark.RIGHT_HIP]
+    Lk = lm[mp_pose.PoseLandmark.LEFT_KNEE]
+    Rk = lm[mp_pose.PoseLandmark.RIGHT_KNEE]
+    La = lm[mp_pose.PoseLandmark.LEFT_ANKLE]
+    Ra = lm[mp_pose.PoseLandmark.RIGHT_ANKLE]
+
+    Lhx, Lhy = int(Lh.x * w), int(Lh.y * h)
+    Rhx, Rhy = int(Rh.x * w), int(Rh.y * h)
+    Lky, Rky = int(Lk.y * h), int(Rk.y * h)
+    Lay, Ray = int(La.y * h), int(Ra.y * h)
+
+    # Use mid‑points
+    hip_y = int((Lhy + Rhy) / 2)
+    knee_y = int((Lky + Rky) / 2)
+    ankle_y = int((Lay + Ray) / 2)
+
+    # Use distance between knees for width (closer to thigh width than hip distance)
+    knee_width = float(abs(Rhx - Lhx)) * 1.1  # small extra factor
+    # pants should be clearly wider than that
+    # make women’s pants a bit wider
+    if gender == "men":
+        width_factor = 4.2
+    else:  # women
+        width_factor = 3.2   # you can tweak 3.0–3.2 if needed
+
+    pant_width_target = int(knee_width * width_factor)
+
+
+    # Height: from a bit above hip to a bit below ankle
+    waistband_y = max(0, int(hip_y - 0.08 * h))
+    hem_y = min(h, int(ankle_y + 0.03 * h))
+    pant_height = max(20, hem_y - waistband_y)
+
+    cloth = Image.open(cloth_png_path).convert("RGBA")
+    cloth = ImageOps.crop(cloth, border=2)
+
+    orig_w, orig_h = cloth.size
+
+    # Scale by height so it spans waistband->hem
+    scale_h = pant_height / orig_h
+    new_w = int(orig_w * scale_h)
+    new_h = pant_height
+    pant_resized = cloth.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+    # Cap max width, but never shrink more than target (to avoid being too skinny)
+    if new_w > pant_width_target:
+        new_w = pant_width_target
+        pant_resized = pant_resized.resize((new_w, pant_height), Image.Resampling.LANCZOS)
+
+    # Center between hips
+    center_x = int((Lhx + Rhx) / 2)
+    paste_x = int(center_x - new_w / 2)
+    paste_y = waistband_y
+
+    base = pil_img.copy()
+    base.paste(pant_resized, (paste_x, paste_y), mask=pant_resized)
+    return base
+
+
+
+def overlay_outfit_on_image(
+    bg_bgr: np.ndarray,
+    top_png_path: Optional[str],
+    bottom_png_path: Optional[str],
+    gender: str = "men",
+) -> np.ndarray:
+    img_rgb = cv2.cvtColor(bg_bgr, cv2.COLOR_BGR2RGB)
+    pil_img = Image.fromarray(img_rgb).convert("RGBA")
+
+    # 1) draw bottom first
+    if bottom_png_path:
+        pil_img = overlay_bottom_on_image(pil_img, img_rgb, bottom_png_path, gender)
+
+    # 2) then draw top so it appears over the pants
+    if top_png_path:
+        pil_img = overlay_top_on_image(pil_img, img_rgb, top_png_path, gender)
+
+    result_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGBA2BGR)
     return result_bgr
 
 
@@ -160,7 +244,8 @@ def overlay_cloth_on_image(bg_bgr: np.ndarray, cloth_png_path: str, gender: str 
 @app.post("/tryon")
 async def tryon_api(
     file: UploadFile = File(...),
-    cloth_url: Optional[str] = Form(None),
+    top_url: Optional[str] = Form(None),
+    bottom_url: Optional[str] = Form(None),
     gender: Optional[str] = Form("men"),
 ):
     # 1) Read user image
@@ -172,27 +257,26 @@ async def tryon_api(
             status_code=400,
         )
 
-    # 2) Require cloth_url (user selects cloth after classify)
-    if not cloth_url:
+    if not top_url and not bottom_url:
         return JSONResponse(
-            {"error": "No cloth selected yet"},
+            {"error": "No cloth selected yet (top or bottom required)"},
             status_code=400,
         )
 
-    # 3) Download cloth
+    top_path = bottom_path = None
     try:
-        tmp_path = "clothes/_tmp_from_shopify.png"
-        cloth_path = download_cloth_to_png(cloth_url, tmp_path)
+        if top_url:
+            top_path = download_cloth_to_png(top_url, "clothes/_tmp_top.png")
+        if bottom_url:
+            bottom_path = download_cloth_to_png(bottom_url, "clothes/_tmp_bottom.png")
     except Exception as e:
         return JSONResponse(
             {"error": "Could not load cloth image", "details": str(e)},
             status_code=400,
         )
 
-    # 4) Overlay
     try:
-        out = overlay_cloth_on_image(img, cloth_path, gender)
-
+        out = overlay_outfit_on_image(img, top_path, bottom_path, gender)
     except Exception as e:
         return JSONResponse(
             {"error": "Processing failed", "details": str(e)},
@@ -203,8 +287,6 @@ async def tryon_api(
     byte_im = im_buf_arr.tobytes()
     b64 = base64.b64encode(byte_im).decode("utf-8")
     return {"image_base64": b64}
-
-
 
 
 @app.get("/clothes-list")
@@ -226,16 +308,15 @@ async def root():
 
 
 @app.get("/clothes")
-async def clothes_api(gender: str = Query("men")):
-    # gender will be "men" or "women"
-    return get_clothes(gender)
+async def clothes_api(
+    gender: str = Query("men"),
+    kind: str = Query("top"),  # 'top' or 'bottom'
+):
+    return get_clothes(gender, kind)
 
-
-from fastapi import FastAPI, File, UploadFile, Form, Query
 
 @app.post("/classify-gender")
 async def classify_gender(file: UploadFile = File(...)):
-    # Read user image
     try:
         img = read_imagefile(file)
     except Exception as e:
@@ -244,10 +325,8 @@ async def classify_gender(file: UploadFile = File(...)):
             status_code=400,
         )
 
-    # Call Roboflow
     auto_gender = detect_gender_with_roboflow(img)
     if auto_gender not in ["men", "women"]:
-        # default / unknown
         auto_gender = "men"
 
     print("Classified gender:", auto_gender)
