@@ -5,19 +5,15 @@
     <style>
         body { font-family: Arial; margin: 20px; }
 
-        /* main row: upload box | result box | bars column */
         .main-layout {
             display: flex;
-            align-items: flex-start;
-            gap: 72px;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        /* LEFT: upload + result side by side */
-        .left-row {
+        .top-row {
             display: flex;
-            gap: 12px;
-            flex: 1 1 0;
-            max-width: 70%;
+            gap: 16px;
         }
 
         .box {
@@ -26,7 +22,7 @@
             text-align: center;
             background: #fafafa;
             border-radius: 6px;
-            flex: 1 1 0;              /* upload and result take equal width */
+            flex: 1 1 0;
         }
 
         .box h3 {
@@ -36,7 +32,7 @@
 
         .box img {
             max-width: 100%;
-            max-height: 360px;   /* tall but fixed so layout is stable */
+            max-height: 360px;
             width: auto;
             height: auto;
             object-fit: contain;
@@ -46,76 +42,141 @@
             border-radius: 4px;
         }
 
-        /* RIGHT: bars stacked, fixed width so they never move */
-        .right-column {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            flex: 0 0 260px;     /* adjust to make bars a bit leaner/wider */
-        }
-
-        .bar-box {
-            background: #fcfcfc;
+        #products-container {
             border: 1px solid #d0d0d0;
             border-radius: 6px;
-            padding: 6px;
-        }
-
-        .bar-box h3 {
-            margin: 0 0 4px 0;
-            font-size: 16px;
-            text-align: center;
-        }
-
-        #tops-bar, #bottoms-bar {
-            border: 1px solid #e0e0e0;
-            padding: 3px;        /* less padding, more space for images */
-            height: 190px;       /* both bars fully visible without page scroll */
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
+            padding: 8px;
             background: #ffffff;
         }
 
-        #tops-bar img,
-        #bottoms-bar img {
-            height: 95px;        /* larger clothes thumbnails */
-            width: auto;
+        #search-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        #searchInput {
+            width: 320px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
+
+        #products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .product-card {
+            position: relative;
+            background: #ffffff;
+            border-radius: 6px;
+            padding: 4px;
+        }
+
+        .product-card img {
+            width: 100%;
+            height: 150px;
             object-fit: contain;
-            cursor: pointer;
             border-radius: 4px;
             border: 2px solid transparent;
             background: #f8f8f8;
+            cursor: pointer;
+            display: block;
         }
 
-        #tops-bar img.selected,
-        #bottoms-bar img.selected {
-            border-color: #1976d2;
+        .product-card.top img.selected {
+            border-color: #1976d2;  /* blue for tops */
+        }
+
+        .product-card.bottom img.selected {
+            border-color: #2e7d32;  /* green for bottoms */
+        }
+
+        .wish-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background: rgba(255,255,255,0.95);
+            font-size: 16px;
+            line-height: 26px;
+            text-align: center;
+            color: #888;
+        }
+
+        .wish-btn.active {
+            color: #e53935;
+        }
+
+        .type-label {
+            position: absolute;
+            left: 6px;
+            top: 6px;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
         }
 
         #statusMessage {
-            margin-top: 10px;
+            margin-top: 6px;
             font-weight: bold;
             text-align: center;
         }
 
+        #wishlist-section {
+            margin-top: 18px;
+        }
+
+        #wishlist-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border: 1px solid #d0d0d0;
+            padding: 8px;
+            background: #ffffff;
+            min-height: 80px;
+        }
+
+        #wishlist-bar .wish-item {
+            position: relative;
+        }
+
+        #wishlist-bar img {
+            height: 80px;
+            width: auto;
+            object-fit: contain;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #ffffff;
+        }
+
+        #wishlist-bar .remove-btn {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            cursor: pointer;
+            background: white;
+            border-radius: 50%;
+            padding: 0 4px;
+            font-size: 14px;
+            line-height: 14px;
+        }
+
         @media (max-width: 900px) {
-            .main-layout {
+            .top-row {
                 flex-direction: column;
-            }
-            .left-row, .right-column {
-                max-width: 100%;
-            }
-            #tops-bar, #bottoms-bar {
-                flex-direction: row;
-                height: auto;
-                overflow-x: auto;
-                overflow-y: hidden;
-            }
-            #tops-bar img,
-            #bottoms-bar img {
-                height: 110px;
             }
         }
     </style>
@@ -124,45 +185,71 @@
 <h2>Virtual Dressing Room</h2>
 
 <div class="main-layout">
-  <!-- LEFT: upload + result in one row -->
-  <div class="left-row">
-    <div class="box" id="upload-box">
+
+  <div class="top-row">
+    <div class="box">
       <h3>Upload Your Image</h3>
       <input type="file" id="inputImage" accept="image/*"><br><br>
       <img id="userPreview">
     </div>
 
-    <div class="box" id="result-box">
+    <div class="box">
       <h3>Result</h3>
       <img id="resultImage">
     </div>
   </div>
 
-  <!-- RIGHT: bars stacked -->
-  <div class="right-column">
-    <div class="bar-box" id="tops-container">
-      <h3>Choose a Top</h3>
-      <div id="tops-bar"></div>
+  <div id="products-container">
+    <div id="search-container">
+      <div><strong>Browse Outfits</strong></div>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search (e.g. red top, blue bottom, jeans, pant)...">
     </div>
+    <div id="products-grid"></div>
+  </div>
 
-    <div class="bar-box" id="bottoms-container">
-      <h3>Choose a Bottom</h3>
-      <div id="bottoms-bar"></div>
-    </div>
+  <div id="statusMessage"></div>
+
+  <div id="wishlist-section">
+    <h3>Saved Wishlist</h3>
+    <div id="wishlist-bar"></div>
   </div>
 </div>
 
-<div id="statusMessage"></div>
-
 <script>
-let selectedTop = null;
-let selectedBottom = null;
 let currentGender = "men";
 let currentFile = null;
+let selectedTop = null;
+let selectedBottom = null;
+
+let allProducts = [];   // { url, type, title }
+let wishlist = new Set();
 
 const statusDiv = document.getElementById("statusMessage");
+const productsGrid = document.getElementById("products-grid");
+const wishlistBar = document.getElementById("wishlist-bar");
+const searchInput = document.getElementById("searchInput");
 
-async function classifyGenderAndLoadClothes(file) {
+// upload handler
+document.getElementById("inputImage").onchange = async function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    currentFile = file;
+    document.getElementById("userPreview").src =
+        URL.createObjectURL(file);
+
+    selectedTop = null;
+    selectedBottom = null;
+    productsGrid.innerHTML = "";
+    document.getElementById("resultImage").src = "";
+
+    await classifyGenderAndLoadProducts(file);
+};
+
+async function classifyGenderAndLoadProducts(file) {
     const form = new FormData();
     form.append("file", file);
 
@@ -181,37 +268,94 @@ async function classifyGenderAndLoadClothes(file) {
     currentGender = data.gender;
     statusDiv.style.color = "green";
     statusDiv.textContent =
-        "Detected: " + currentGender + ". Tap a top or bottom to try it on.";
+        "Detected: " + currentGender +
+        ". Click a TOP and a BOTTOM to try the full outfit. Heart = wishlist.";
 
-    await loadClothesBar(currentGender, "top");
-    await loadClothesBar(currentGender, "bottom");
+    await loadProducts(currentGender);
+    renderProducts();
 }
 
-async function loadClothesBar(gender, kind) {
-    const res = await fetch(`/clothes?gender=${encodeURIComponent(gender)}&kind=${encodeURIComponent(kind)}`);
-    const data = await res.json();
+async function loadProducts(gender) {
+    const res = await fetch(`/clothes?gender=${encodeURIComponent(gender)}`);
+    const data = await res.json();   // [{url, type}, ...]
 
-    const barId = kind === "bottom" ? "bottoms-bar" : "tops-bar";
-    const bar = document.getElementById(barId);
-    bar.innerHTML = "";
+    allProducts = data.map(item => {
+        const url = item.url;
+        const kind = (item.type || "").toLowerCase(); // "top" or "bottom"
 
-    data.forEach(url => {
+        let name = url.split("/").pop().split(".")[0];
+        name = name.replace(/[_\-]+/g, " ");
+
+        const title = (kind + " " + name).toLowerCase();
+        return { url, type: kind, title };
+    });
+}
+
+function renderProducts() {
+    productsGrid.innerHTML = "";
+
+    const q = searchInput.value.trim().toLowerCase();
+
+    allProducts.forEach(item => {
+        const text = (item.title + " " + item.url).toLowerCase();
+        if (q && !text.includes(q)) {
+            return;
+        }
+
+        const card = document.createElement("div");
+        card.className = "product-card " + item.type;
+
+        const typeLabel = document.createElement("div");
+        typeLabel.className = "type-label";
+        typeLabel.textContent = item.type;
+
         const img = document.createElement("img");
-        img.src = url;
+        img.src = item.url;
+        img.alt = item.title;
+        img.title = item.title;
 
         img.onclick = async () => {
-            bar.querySelectorAll("img").forEach(i => i.classList.remove("selected"));
+            document.querySelectorAll(".product-card." + item.type + " img")
+                .forEach(i => i.classList.remove("selected"));
             img.classList.add("selected");
 
-            if (kind === "bottom") selectedBottom = url;
-            else selectedTop = url;
-
+            if (item.type === "top") {
+                selectedTop = item.url;
+            } else {
+                selectedBottom = item.url;
+            }
             await autoTryOn();
         };
 
-        bar.appendChild(img);
+        const heart = document.createElement("button");
+        heart.className = "wish-btn";
+        heart.innerHTML = "&#10084;";
+
+        if (wishlist.has(item.url)) {
+            heart.classList.add("active");
+        }
+
+        heart.onclick = (event) => {
+            event.stopPropagation();
+            toggleWishlist(item.url);
+            if (wishlist.has(item.url)) {
+                heart.classList.add("active");
+            } else {
+                heart.classList.remove("active");
+            }
+        };
+
+        card.appendChild(img);
+        card.appendChild(typeLabel);
+        card.appendChild(heart);
+        productsGrid.appendChild(card);
     });
 }
+
+function applySearchFilter() {
+    renderProducts();
+}
+searchInput.addEventListener("input", applySearchFilter);
 
 async function autoTryOn() {
     if (!currentFile) {
@@ -237,7 +381,8 @@ async function autoTryOn() {
         document.getElementById("resultImage").src =
             "data:image/png;base64," + data.image_base64;
         statusDiv.style.color = "green";
-        statusDiv.textContent = "Outfit applied. Tap another top/bottom to change.";
+        statusDiv.textContent =
+            "Outfit applied. Change top/bottom or add to wishlist.";
     } else {
         statusDiv.style.color = "red";
         statusDiv.textContent = "Error applying outfit.";
@@ -245,22 +390,66 @@ async function autoTryOn() {
     }
 }
 
-document.getElementById("inputImage").onchange = async function (e) {
-    const file = e.target.files[0];
-    if (!file) return;
+function toggleWishlist(url) {
+    if (wishlist.has(url)) {
+        wishlist.delete(url);
+    } else {
+        wishlist.add(url);
+    }
+    renderWishlist();
+}
 
-    currentFile = file;
-    document.getElementById("userPreview").src =
-        URL.createObjectURL(file);
+function renderWishlist() {
+    wishlistBar.innerHTML = "";
+    wishlist.forEach(url => {
+        const wrap = document.createElement("div");
+        wrap.className = "wish-item";
 
-    selectedTop = null;
-    selectedBottom = null;
-    document.getElementById("tops-bar").innerHTML = "";
-    document.getElementById("bottoms-bar").innerHTML = "";
-    document.getElementById("resultImage").src = "";
+        const img = document.createElement("img");
+        img.src = url;
 
-    await classifyGenderAndLoadClothes(file);
-};
+        img.onclick = async () => {
+            const item = allProducts.find(p => p.url === url);
+            if (!item) return;
+
+            if (item.type === "top") {
+                selectedTop = url;
+                document.querySelectorAll(".product-card.top img")
+                    .forEach(i => {
+                        if (i.src === url) i.classList.add("selected");
+                        else i.classList.remove("selected");
+                    });
+            } else {
+                selectedBottom = url;
+                document.querySelectorAll(".product-card.bottom img")
+                    .forEach(i => {
+                        if (i.src === url) i.classList.add("selected");
+                        else i.classList.remove("selected");
+                    });
+            }
+            await autoTryOn();
+        };
+
+        const removeBtn = document.createElement("span");
+        removeBtn.textContent = "×";
+        removeBtn.className = "remove-btn";
+        removeBtn.onclick = () => {
+            wishlist.delete(url);
+            renderWishlist();
+            document.querySelectorAll(".product-card").forEach(card => {
+                const imgTag = card.querySelector("img");
+                const heart = card.querySelector(".wish-btn");
+                if (imgTag && heart && imgTag.src === url) {
+                    heart.classList.remove("active");
+                }
+            });
+        };
+
+        wrap.appendChild(img);
+        wrap.appendChild(removeBtn);
+        wishlistBar.appendChild(wrap);
+    });
+}
 </script>
 </body>
 </html>
