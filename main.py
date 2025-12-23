@@ -47,7 +47,6 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
     try:
         success, encoded_img = cv2.imencode(".jpg", img_bgr)
         if not success:
-            print("Roboflow: could not encode image")
             return None
 
         files = {"file": ("image.jpg", encoded_img.tobytes(), "image/jpeg")}
@@ -60,6 +59,7 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
         if "predictions" in data and data["predictions"]:
             top_pred = data["predictions"][0]
             class_name = top_pred.get("class", "").lower()
+            conf = float(top_pred.get("confidence", 0.0))
 
             if "male" in class_name or "men" in class_name:
                 return "men"
@@ -70,6 +70,7 @@ def detect_gender_with_roboflow(img_bgr: np.ndarray) -> Optional[str]:
     except Exception as e:
         print("Roboflow error:", e)
         return None
+
 
 
 def overlay_top_on_image(
@@ -208,6 +209,13 @@ def overlay_outfit_on_image(
     result_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGBA2BGR)
     return result_bgr
 
+def has_person_pose(img_bgr: np.ndarray) -> bool:
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    results = pose.process(img_rgb)
+    # just check if MediaPipe sees *any* pose at all
+    return results.pose_landmarks is not None
+
+
 
 @app.post("/tryon")
 async def tryon_api(
@@ -291,6 +299,7 @@ async def root():
         return HTMLResponse(content=f.read(), status_code=200)
 
 
+
 @app.post("/classify-gender")
 async def classify_gender(file: UploadFile = File(...)):
     try:
@@ -301,9 +310,19 @@ async def classify_gender(file: UploadFile = File(...)):
             status_code=400,
         )
 
+    # 1) quick person check
+    if not has_person_pose(img):
+        return JSONResponse(
+            {"error": "no_person", "message": "No person detected in image."},
+            status_code=400,
+        )
+    
+    # 2) Call Roboflow
     auto_gender = detect_gender_with_roboflow(img)
+
+    # If Roboflow is unsure, default to 'men' (or 'women' if you prefer)
     if auto_gender not in ["men", "women"]:
         auto_gender = "men"
 
-    print("Classified gender:", auto_gender)
     return {"gender": auto_gender}
+
