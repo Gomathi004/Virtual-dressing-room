@@ -129,9 +129,10 @@
         }
 
         #statusMessage {
-            margin-top: 6px;
+            margin-top: 4px;
             font-weight: bold;
             text-align: center;
+            padding: 4px 0;
         }
 
         #wishlist-section {
@@ -179,6 +180,58 @@
                 flex-direction: column;
             }
         }
+
+        #tryon-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    border: 1px solid #d0d0d0;
+    padding: 8px;
+    background: #ffffff;
+    min-height: 80px;
+}
+
+#tryon-gallery .tryon-item {
+    position: relative;
+}
+
+#tryon-gallery img {
+    height: 100px;
+    width: auto;
+    object-fit: contain;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: #fff;
+}
+
+#tryon-gallery .remove-tryon {
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    cursor: pointer;
+    background: white;
+    border-radius: 50%;
+    padding: 0 4px;
+    font-size: 14px;
+    line-height: 14px;
+}
+
+#downloadBtn, #saveTryOnBtn {
+    padding: 6px 12px;
+    margin: 0 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid #444;
+    background: #fff;
+}
+
+#resultActions {
+    margin-top: 8px;
+    display: none;   /* hidden until we have a result */
+}
+
+
     </style>
 </head>
 <body>
@@ -194,10 +247,19 @@
     </div>
 
     <div class="box">
-      <h3>Result</h3>
-      <img id="resultImage">
+  <h3>Result</h3>
+  <img id="resultImage">
+  <div id="resultActions">
+    <button id="downloadBtn">Download Image</button>
+    <button id="saveTryOnBtn">Save to Liked</button>
+  </div>
+</div>
+
+
     </div>
   </div>
+
+  <div id="statusMessage"></div>
 
   <div id="products-container">
     <div id="search-container">
@@ -210,13 +272,18 @@
     <div id="products-grid"></div>
   </div>
 
-  <div id="statusMessage"></div>
 
   <div id="wishlist-section">
     <h3>Saved Wishlist</h3>
     <div id="wishlist-bar"></div>
   </div>
 </div>
+
+<div id="tryon-gallery-section">
+  <h3>Saved Try-On Images</h3>
+  <div id="tryon-gallery"></div>
+</div>
+
 
 <script>
 let currentGender = "men";
@@ -245,6 +312,7 @@ document.getElementById("inputImage").onchange = async function (e) {
     selectedBottom = null;
     productsGrid.innerHTML = "";
     document.getElementById("resultImage").src = "";
+    document.getElementById("resultActions").style.display = "none";
 
     await classifyGenderAndLoadProducts(file);
 };
@@ -259,9 +327,17 @@ async function classifyGenderAndLoadProducts(file) {
     const res = await fetch("/classify-gender", { method: "POST", body: form });
     const data = await res.json();
 
-    if (!data.gender) {
+    if (!res.ok) {
         statusDiv.style.color = "red";
-        statusDiv.textContent = "Could not classify gender.";
+        if (data.error === "no_person") {
+            statusDiv.textContent = "Invalid image: no person detected. Upload a full-body photo.";
+        } else if (data.error === "gender_unknown") {
+            statusDiv.textContent = "Could not detect gender. Try a clearer, front-facing image.";
+        } else {
+            statusDiv.textContent = "Classification failed.";
+        }
+        productsGrid.innerHTML = "";
+        document.getElementById("resultImage").src = "";
         return;
     }
 
@@ -269,11 +345,13 @@ async function classifyGenderAndLoadProducts(file) {
     statusDiv.style.color = "green";
     statusDiv.textContent =
         "Detected: " + currentGender +
-        ". Click a TOP and a BOTTOM to try the full outfit. Heart = wishlist.";
+        ". Click a TOP and a BOTTOM to try the full outfit.";
 
     await loadProducts(currentGender);
     renderProducts();
 }
+
+
 
 async function loadProducts(gender) {
     const res = await fetch(`/clothes?gender=${encodeURIComponent(gender)}`);
@@ -380,6 +458,7 @@ async function autoTryOn() {
     if (data.image_base64) {
         document.getElementById("resultImage").src =
             "data:image/png;base64," + data.image_base64;
+        document.getElementById("resultActions").style.display = "block";
         statusDiv.style.color = "green";
         statusDiv.textContent =
             "Outfit applied. Change top/bottom or add to wishlist.";
@@ -450,6 +529,63 @@ function renderWishlist() {
         wishlistBar.appendChild(wrap);
     });
 }
+
+document.getElementById("downloadBtn").onclick = function () {
+    const img = document.getElementById("resultImage");
+    if (!img.src) {
+        alert("No try-on image to download yet.");
+        return;
+    }
+
+    const link = document.createElement("a");
+    link.href = img.src;           // data:image/png;base64,...
+    link.download = "tryon.png";   // filename
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+let savedTryOns = [];  // stores base64 image strings
+
+const tryonGallery = document.getElementById("tryon-gallery");
+
+document.getElementById("saveTryOnBtn").onclick = function () {
+    const img = document.getElementById("resultImage");
+    if (!img.src) {
+        alert("No try-on image to save yet.");
+        return;
+    }
+    // avoid duplicates
+    if (savedTryOns.includes(img.src)) return;
+
+    savedTryOns.push(img.src);
+    renderTryOnGallery();
+};
+
+function renderTryOnGallery() {
+    tryonGallery.innerHTML = "";
+    savedTryOns.forEach(src => {
+        const wrap = document.createElement("div");
+        wrap.className = "tryon-item";
+
+        const image = document.createElement("img");
+        image.src = src;
+
+        const removeBtn = document.createElement("span");
+        removeBtn.textContent = "×";
+        removeBtn.className = "remove-tryon";
+        removeBtn.onclick = () => {
+            savedTryOns = savedTryOns.filter(s => s !== src);
+            renderTryOnGallery();
+        };
+
+        wrap.appendChild(image);
+        wrap.appendChild(removeBtn);
+        tryonGallery.appendChild(wrap);
+    });
+}
+
+
 </script>
 </body>
 </html>
