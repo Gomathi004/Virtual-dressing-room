@@ -14,10 +14,17 @@ from PIL import Image, ImageOps
 
 from shopify_fetch import get_clothes  # get_clothes(gender, kind) -> list[str]
 
+from db import Selection, init_db, get_session
+from typing import List
+from sqlmodel import select
+
+
 ROBOFLOW_API_KEY = "fb8FDC2lnqTjyHhWeQF2"
 ROBOFLOW_MODEL_URL = "https://serverless.roboflow.com/gender-classification-wadex/1"
 
 app = FastAPI()
+init_db()
+
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
@@ -258,6 +265,18 @@ async def tryon_api(
             status_code=500,
         )
 
+    # <<< INSERT DB LOGGING HERE >>>
+    from db import get_session, Selection  # or keep these imports at the top of file
+    with get_session() as session:
+        sel = Selection(
+            gender=gender,
+            top_url=top_url,
+            bottom_url=bottom_url,
+        )
+        session.add(sel)
+        session.commit()
+    # <<< END INSERT >>>
+
     _, im_buf_arr = cv2.imencode(".png", out)
     byte_im = im_buf_arr.tobytes()
     b64 = base64.b64encode(byte_im).decode("utf-8")
@@ -326,3 +345,8 @@ async def classify_gender(file: UploadFile = File(...)):
 
     return {"gender": auto_gender}
 
+@app.get("/selections", response_model=List[Selection])
+def list_selections():
+    with get_session() as session:
+        result = session.exec(select(Selection).order_by(Selection.created_at.desc()))
+        return result.all()
