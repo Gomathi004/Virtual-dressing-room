@@ -6,23 +6,20 @@
         body { font-family: Arial; margin: 20px; }
 
         .main-layout {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1.2fr; /* col1: upload+wishlist, col2: result+tryon, col3: search+tops+bottom */
+            grid-template-rows: auto auto auto auto; /* adjusts to content */
             gap: 16px;
+            align-items: start;
         }
 
-        .top-row {
-            display: flex;
-            gap: 16px;
-        }
-
+        /* generic boxes */
         .box {
             border: 1px solid #d0d0d0;
             padding: 8px;
             text-align: center;
             background: #fafafa;
             border-radius: 6px;
-            flex: 1 1 0;
         }
 
         .box h3 {
@@ -42,32 +39,70 @@
             border-radius: 4px;
         }
 
-        #products-container {
-            border: 1px solid #d0d0d0;
-            border-radius: 6px;
-            padding: 8px;
-            background: #ffffff;
+        /* position 1: upload */
+        #upload-box {
+            grid-column: 1;
+            grid-row: 1 / span 2; /* tall left column */
         }
 
-        #search-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 6px;
+        /* position 2: result */
+        #result-box {
+            grid-column: 2;
+            grid-row: 1 / span 2; /* tall middle column */
         }
 
+        /* position 3: search bar (top-right small) */
+        #search-bar-box {
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        /* position 4: tops list (right column middle) */
+        #tops-box {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        /* position 5: bottoms list (right column bottom) */
+        #bottoms-box {
+            grid-column: 3;
+            grid-row: 3;
+        }
+
+        /* position 6: saved wishlist (full width row under 1+2) */
+        #wishlist-section {
+            grid-column: 1 / span 2;
+            grid-row: 3;
+        }
+
+        /* position 7: saved try-on images (full width row under 1+2) */
+        #tryon-gallery-section {
+            grid-column: 1 / span 2;
+            grid-row: 4;
+        }
+
+        /* search + products inner layout */
         #searchInput {
-            width: 320px;
+            width: 100%;
             padding: 6px 8px;
             border-radius: 4px;
             border: 1px solid #ccc;
             font-size: 14px;
         }
 
-        #products-grid {
+        .products-list {
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 8px;
+            background: #ffffff;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+
+        .products-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 12px;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px;
         }
 
         .product-card {
@@ -79,7 +114,7 @@
 
         .product-card img {
             width: 100%;
-            height: 150px;
+            height: 120px;
             object-fit: contain;
             border-radius: 4px;
             border: 2px solid transparent;
@@ -89,11 +124,11 @@
         }
 
         .product-card.top img.selected {
-            border-color: #1976d2;  /* blue for tops */
+            border-color: #1976d2;
         }
 
         .product-card.bottom img.selected {
-            border-color: #2e7d32;  /* green for bottoms */
+            border-color: #2e7d32;
         }
 
         .wish-btn {
@@ -129,16 +164,14 @@
         }
 
         #statusMessage {
+            grid-column: 1 / span 3;
             margin-top: 4px;
             font-weight: bold;
             text-align: center;
             padding: 4px 0;
         }
 
-        #wishlist-section {
-            margin-top: 18px;
-        }
-
+        /* wishlist */
         #wishlist-bar {
             display: flex;
             flex-wrap: wrap;
@@ -175,63 +208,73 @@
             line-height: 14px;
         }
 
-        @media (max-width: 900px) {
-            .top-row {
-                flex-direction: column;
-            }
+        /* try-on gallery (7) */
+        #tryon-gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border: 1px solid #d0d0d0;
+            padding: 8px;
+            background: #ffffff;
+            min-height: 80px;
         }
 
-        #tryon-gallery {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    border: 1px solid #d0d0d0;
-    padding: 8px;
-    background: #ffffff;
-    min-height: 80px;
-}
+        #tryon-gallery .tryon-item {
+            position: relative;
+        }
 
-#tryon-gallery .tryon-item {
-    position: relative;
-}
+        #tryon-gallery img {
+            height: 100px;
+            width: auto;
+            object-fit: contain;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            background: #fff;
+        }
 
-#tryon-gallery img {
-    height: 100px;
-    width: auto;
-    object-fit: contain;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    background: #fff;
-}
+        #tryon-gallery .remove-tryon {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            cursor: pointer;
+            background: white;
+            border-radius: 50%;
+            padding: 0 4px;
+            font-size: 14px;
+            line-height: 14px;
+        }
 
-#tryon-gallery .remove-tryon {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    cursor: pointer;
-    background: white;
-    border-radius: 50%;
-    padding: 0 4px;
-    font-size: 14px;
-    line-height: 14px;
-}
+        #downloadBtn, #saveTryOnBtn {
+            padding: 6px 12px;
+            margin: 0 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #fff;
+        }
 
-#downloadBtn, #saveTryOnBtn {
-    padding: 6px 12px;
-    margin: 0 4px;
-    font-size: 14px;
-    cursor: pointer;
-    border-radius: 4px;
-    border: 1px solid #444;
-    background: #fff;
-}
+        #resultActions {
+            margin-top: 8px;
+            display: none;   /* hidden until we have a result */
+        }
 
-#resultActions {
-    margin-top: 8px;
-    display: none;   /* hidden until we have a result */
-}
-
-
+        @media (max-width: 1000px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto;
+            }
+            #upload-box,
+            #result-box,
+            #search-bar-box,
+            #tops-box,
+            #bottoms-box,
+            #wishlist-section,
+            #tryon-gallery-section {
+                grid-column: 1;
+                grid-row: auto;
+            }
+        }
     </style>
 </head>
 <body>
@@ -239,51 +282,62 @@
 
 <div class="main-layout">
 
-  <div class="top-row">
-    <div class="box">
-      <h3>Upload Your Image</h3>
-      <input type="file" id="inputImage" accept="image/*"><br><br>
-      <img id="userPreview">
-    </div>
-
-    <div class="box">
-  <h3>Result</h3>
-  <img id="resultImage">
-  <div id="resultActions">
-    <button id="downloadBtn">Download Image</button>
-    <button id="saveTryOnBtn">Save to Liked</button>
+  <!-- 1. Upload your image -->
+  <div class="box" id="upload-box">
+    <h3>Upload Your Image</h3>
+    <input type="file" id="inputImage" accept="image/*"><br><br>
+    <img id="userPreview">
   </div>
-</div>
 
-
+  <!-- 2. Result -->
+  <div class="box" id="result-box">
+    <h3>Result</h3>
+    <img id="resultImage">
+    <div id="resultActions">
+      <button id="downloadBtn">Download Image</button>
+      <button id="saveTryOnBtn">Save to Liked</button>
     </div>
   </div>
 
-  <div id="statusMessage"></div>
-
-  <div id="products-container">
-    <div id="search-container">
-      <div><strong>Browse Outfits</strong></div>
-      <input
-        type="text"
-        id="searchInput"
-        placeholder="Search (e.g. red top, blue bottom, jeans, pant)...">
-    </div>
-    <div id="products-grid"></div>
+  <!-- 3. Search bar -->
+  <div class="box" id="search-bar-box">
+    <h3>Search Outfits</h3>
+    <input
+      type="text"
+      id="searchInput"
+      placeholder="Search (e.g. red top, blue bottom, jeans, pant)...">
   </div>
 
+  <!-- 4. Tops -->
+  <div class="box" id="tops-box">
+    <h3>Tops</h3>
+    <div class="products-list">
+      <div id="tops-grid" class="products-grid"></div>
+    </div>
+  </div>
 
-  <div id="wishlist-section">
+  <!-- 5. Bottom -->
+  <div class="box" id="bottoms-box">
+    <h3>Bottoms</h3>
+    <div class="products-list">
+      <div id="bottoms-grid" class="products-grid"></div>
+    </div>
+  </div>
+
+  <!-- 6. Saved wishlist -->
+  <div id="wishlist-section" class="box">
     <h3>Saved Wishlist</h3>
     <div id="wishlist-bar"></div>
   </div>
-</div>
 
-<div id="tryon-gallery-section">
-  <h3>Saved Try-On Images</h3>
-  <div id="tryon-gallery"></div>
-</div>
+  <!-- 7. Saved try-on images -->
+  <div id="tryon-gallery-section" class="box">
+    <h3>Saved Try-On Images</h3>
+    <div id="tryon-gallery"></div>
+  </div>
 
+  <div id="statusMessage"></div>
+</div>
 
 <script>
 let currentGender = "men";
@@ -293,11 +347,14 @@ let selectedBottom = null;
 
 let allProducts = [];   // { url, type, title }
 let wishlist = new Set();
+let savedTryOns = [];   // base64 strings
 
 const statusDiv = document.getElementById("statusMessage");
-const productsGrid = document.getElementById("products-grid");
+const topsGrid = document.getElementById("tops-grid");
+const bottomsGrid = document.getElementById("bottoms-grid");
 const wishlistBar = document.getElementById("wishlist-bar");
 const searchInput = document.getElementById("searchInput");
+const tryonGallery = document.getElementById("tryon-gallery");
 
 // upload handler
 document.getElementById("inputImage").onchange = async function (e) {
@@ -310,7 +367,8 @@ document.getElementById("inputImage").onchange = async function (e) {
 
     selectedTop = null;
     selectedBottom = null;
-    productsGrid.innerHTML = "";
+    topsGrid.innerHTML = "";
+    bottomsGrid.innerHTML = "";
     document.getElementById("resultImage").src = "";
     document.getElementById("resultActions").style.display = "none";
 
@@ -336,7 +394,8 @@ async function classifyGenderAndLoadProducts(file) {
         } else {
             statusDiv.textContent = "Classification failed.";
         }
-        productsGrid.innerHTML = "";
+        topsGrid.innerHTML = "";
+        bottomsGrid.innerHTML = "";
         document.getElementById("resultImage").src = "";
         return;
     }
@@ -351,8 +410,7 @@ async function classifyGenderAndLoadProducts(file) {
     renderProducts();
 }
 
-
-
+// load products from backend
 async function loadProducts(gender) {
     const res = await fetch(`/clothes?gender=${encodeURIComponent(gender)}`);
     const data = await res.json();   // [{url, type}, ...]
@@ -360,25 +418,23 @@ async function loadProducts(gender) {
     allProducts = data.map(item => {
         const url = item.url;
         const kind = (item.type || "").toLowerCase(); // "top" or "bottom"
-
         let name = url.split("/").pop().split(".")[0];
         name = name.replace(/[_\-]+/g, " ");
-
         const title = (kind + " " + name).toLowerCase();
         return { url, type: kind, title };
     });
 }
 
+// split into tops and bottoms grids
 function renderProducts() {
-    productsGrid.innerHTML = "";
+    topsGrid.innerHTML = "";
+    bottomsGrid.innerHTML = "";
 
     const q = searchInput.value.trim().toLowerCase();
 
     allProducts.forEach(item => {
         const text = (item.title + " " + item.url).toLowerCase();
-        if (q && !text.includes(q)) {
-            return;
-        }
+        if (q && !text.includes(q)) return;
 
         const card = document.createElement("div");
         card.className = "product-card " + item.type;
@@ -426,15 +482,18 @@ function renderProducts() {
         card.appendChild(img);
         card.appendChild(typeLabel);
         card.appendChild(heart);
-        productsGrid.appendChild(card);
+
+        if (item.type === "top") {
+            topsGrid.appendChild(card);
+        } else {
+            bottomsGrid.appendChild(card);
+        }
     });
 }
 
-function applySearchFilter() {
-    renderProducts();
-}
-searchInput.addEventListener("input", applySearchFilter);
+searchInput.addEventListener("input", renderProducts);
 
+// try-on
 async function autoTryOn() {
     if (!currentFile) {
         statusDiv.style.color = "red";
@@ -469,6 +528,7 @@ async function autoTryOn() {
     }
 }
 
+// wishlist
 function toggleWishlist(url) {
     if (wishlist.has(url)) {
         wishlist.delete(url);
@@ -530,6 +590,7 @@ function renderWishlist() {
     });
 }
 
+// download current result
 document.getElementById("downloadBtn").onclick = function () {
     const img = document.getElementById("resultImage");
     if (!img.src) {
@@ -538,26 +599,21 @@ document.getElementById("downloadBtn").onclick = function () {
     }
 
     const link = document.createElement("a");
-    link.href = img.src;           // data:image/png;base64,...
-    link.download = "tryon.png";   // filename
+    link.href = img.src;
+    link.download = "tryon.png";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 };
 
-let savedTryOns = [];  // stores base64 image strings
-
-const tryonGallery = document.getElementById("tryon-gallery");
-
+// save current try-on
 document.getElementById("saveTryOnBtn").onclick = function () {
     const img = document.getElementById("resultImage");
     if (!img.src) {
         alert("No try-on image to save yet.");
         return;
     }
-    // avoid duplicates
     if (savedTryOns.includes(img.src)) return;
-
     savedTryOns.push(img.src);
     renderTryOnGallery();
 };
@@ -584,8 +640,6 @@ function renderTryOnGallery() {
         tryonGallery.appendChild(wrap);
     });
 }
-
-
 </script>
 </body>
 </html>
