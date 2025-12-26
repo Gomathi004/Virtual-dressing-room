@@ -7,13 +7,12 @@
 
         .main-layout {
             display: grid;
-            grid-template-columns: 1fr 1fr 1.2fr; /* col1: upload+wishlist, col2: result+tryon, col3: search+tops+bottom */
-            grid-template-rows: auto auto auto auto; /* adjusts to content */
+            grid-template-columns: 1fr 1fr 1.2fr;
+            grid-template-rows: auto auto auto auto;
             gap: 16px;
             align-items: start;
         }
 
-        /* generic boxes */
         .box {
             border: 1px solid #d0d0d0;
             padding: 8px;
@@ -39,49 +38,67 @@
             border-radius: 4px;
         }
 
-        /* position 1: upload */
+        /* 1: upload */
         #upload-box {
             grid-column: 1;
-            grid-row: 1 / span 2; /* tall left column */
+            grid-row: 1 / span 2;
         }
 
-        /* position 2: result */
+        /* 2: result */
         #result-box {
             grid-column: 2;
-            grid-row: 1 / span 2; /* tall middle column */
+            grid-row: 1 / span 2;
         }
 
-        /* position 3: search bar (top-right small) */
+        /* 3: search bar (top-right) */
         #search-bar-box {
             grid-column: 3;
             grid-row: 1;
         }
 
-        /* position 4: tops list (right column middle) */
-        #tops-box {
+        /* 4+5: combined Clothes (tops + bottoms) */
+        #clothes-box {
             grid-column: 3;
-            grid-row: 2;
+            grid-row: 2 / span 5; /* takes space of old tops + bottoms */
         }
 
-        /* position 5: bottoms list (right column bottom) */
-        #bottoms-box {
-            grid-column: 3;
-            grid-row: 3;
+        .products-two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            text-align: left;
         }
 
-        /* position 6: saved wishlist (full width row under 1+2) */
-        #wishlist-section {
-            grid-column: 1 / span 2;
-            grid-row: 3;
+        .products-subbox h4 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
         }
 
-        /* position 7: saved try-on images (full width row under 1+2) */
-        #tryon-gallery-section {
+        /* combined saved sections row (wishlist + try-on) */
+        #saved-sections {
             grid-column: 1 / span 2;
             grid-row: 4;
+            padding: 8px;
+            display: grid;
+            grid-template-rows: auto auto;
+            row-gap: 4px;       /* spacing between the two inner boxes */
         }
 
-        /* search + products inner layout */
+        /* inner boxes now sit inside saved-sections */
+        #wishlist-section,
+        #tryon-gallery-section {
+            margin: 0;
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 6px;
+            background: #fafafa;
+        }
+
+        #wishlist-section h3,
+        #tryon-gallery-section h3 {
+            margin: 0 0 4px 0;
+        }
+
         #searchInput {
             width: 100%;
             padding: 6px 8px;
@@ -95,7 +112,7 @@
             border-radius: 6px;
             padding: 8px;
             background: #ffffff;
-            max-height: 260px;
+            max-height: 520px;
             overflow-y: auto;
         }
 
@@ -163,15 +180,17 @@
             text-transform: uppercase;
         }
 
+        /* status message under upload+result */
         #statusMessage {
-            grid-column: 1 / span 3;
+            grid-column: 1 / span 2;
+            grid-row: 3;
             margin-top: 4px;
             font-weight: bold;
             text-align: center;
             padding: 4px 0;
         }
 
-        /* wishlist */
+        /* wishlist bar */
         #wishlist-bar {
             display: flex;
             flex-wrap: wrap;
@@ -179,7 +198,7 @@
             border: 1px solid #d0d0d0;
             padding: 8px;
             background: #ffffff;
-            min-height: 80px;
+            min-height: 40px;
         }
 
         #wishlist-bar .wish-item {
@@ -208,7 +227,7 @@
             line-height: 14px;
         }
 
-        /* try-on gallery (7) */
+        /* try-on gallery */
         #tryon-gallery {
             display: flex;
             flex-wrap: wrap;
@@ -216,7 +235,7 @@
             border: 1px solid #d0d0d0;
             padding: 8px;
             background: #ffffff;
-            min-height: 80px;
+            min-height: 40px;
         }
 
         #tryon-gallery .tryon-item {
@@ -256,7 +275,7 @@
 
         #resultActions {
             margin-top: 8px;
-            display: none;   /* hidden until we have a result */
+            display: none;
         }
 
         @media (max-width: 1000px) {
@@ -267,10 +286,9 @@
             #upload-box,
             #result-box,
             #search-bar-box,
-            #tops-box,
-            #bottoms-box,
-            #wishlist-section,
-            #tryon-gallery-section {
+            #clothes-box,
+            #saved-sections,
+            #statusMessage {
                 grid-column: 1;
                 grid-row: auto;
             }
@@ -308,35 +326,41 @@
       placeholder="Search (e.g. red top, blue bottom, jeans, pant)...">
   </div>
 
-  <!-- 4. Tops -->
-  <div class="box" id="tops-box">
-    <h3>Tops</h3>
-    <div class="products-list">
-      <div id="tops-grid" class="products-grid"></div>
+  <!-- 4+5. Clothes: Tops + Bottoms -->
+  <div class="box" id="clothes-box">
+    <h3>Clothes</h3>
+    <div class="products-two-col">
+      <div class="products-subbox">
+        <h4>Tops</h4>
+        <div class="products-list">
+          <div id="tops-grid" class="products-grid"></div>
+        </div>
+      </div>
+      <div class="products-subbox">
+        <h4>Bottoms</h4>
+        <div class="products-list">
+          <div id="bottoms-grid" class="products-grid"></div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- 5. Bottom -->
-  <div class="box" id="bottoms-box">
-    <h3>Bottoms</h3>
-    <div class="products-list">
-      <div id="bottoms-grid" class="products-grid"></div>
-    </div>
-  </div>
-
-  <!-- 6. Saved wishlist -->
-  <div id="wishlist-section" class="box">
-    <h3>Saved Wishlist</h3>
-    <div id="wishlist-bar"></div>
-  </div>
-
-  <!-- 7. Saved try-on images -->
-  <div id="tryon-gallery-section" class="box">
-    <h3>Saved Try-On Images</h3>
-    <div id="tryon-gallery"></div>
-  </div>
-
+  <!-- status under upload+result -->
   <div id="statusMessage"></div>
+
+  <!-- 6+7. Combined row: wishlist + try-on -->
+  <div id="saved-sections" class="box">
+    <div id="wishlist-section">
+      <h3>Saved Wishlist</h3>
+      <div id="wishlist-bar"></div>
+    </div>
+
+    <div id="tryon-gallery-section">
+      <h3>Saved Try-On Images</h3>
+      <div id="tryon-gallery"></div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -463,7 +487,7 @@ function renderProducts() {
 
         const heart = document.createElement("button");
         heart.className = "wish-btn";
-        heart.innerHTML = "&#10084;";
+        heart.innerHTML = "❤";
 
         if (wishlist.has(item.url)) {
             heart.classList.add("active");
