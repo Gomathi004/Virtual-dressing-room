@@ -16,7 +16,7 @@ from shopify_fetch import get_clothes  # get_clothes(gender, kind) -> list[str]
 
 from db import Selection, init_db, get_session
 from typing import List
-from sqlmodel import select
+from sqlmodel import select, update
 
 
 ROBOFLOW_API_KEY = "fb8FDC2lnqTjyHhWeQF2"
@@ -345,8 +345,73 @@ async def classify_gender(file: UploadFile = File(...)):
 
     return {"gender": auto_gender}
 
-@app.get("/selections", response_model=List[Selection])
-def list_selections():
+@app.get("/selections")
+def get_selections():
     with get_session() as session:
         result = session.exec(select(Selection).order_by(Selection.created_at.desc()))
+        selections = result.all()
+        
+        # Format with full URLs + liked status
+        formatted = []
+        for s in selections:
+            formatted.append({
+                "id": s.id,
+                "created_at": s.created_at.isoformat(),  # ✅ FIXED: make readable
+                "gender": s.gender,
+                "top_url": s.top_url,
+                "bottom_url": s.bottom_url,
+                "liked": s.liked
+            })
+        return formatted
+
+@app.post("/like-item")
+async def like_item(item_url: str = Form(...)):
+    """Mark the most recent selection containing this item as liked=True"""
+    with get_session() as session:
+        # Find most recent selection with this top_url OR bottom_url
+        stmt = select(Selection).where(
+            (Selection.top_url == item_url) | (Selection.bottom_url == item_url)
+        ).order_by(Selection.created_at.desc()).limit(1)
+        
+        result = session.exec(stmt)
+        selection = result.first()
+        
+        if not selection:
+            return JSONResponse({"error": "No recent selection found"}, status_code=404)
+        
+        # Mark as liked
+        selection.liked = True
+        session.add(selection)
+        session.commit()
+        
+        return {"success": True, "selection_id": selection.id}
+
+@app.get("/liked-items")
+def liked_items():
+    with get_session() as session:
+        result = session.exec(
+            select(Selection)
+            .where(Selection.liked == True)
+            .order_by(Selection.created_at.desc())
+        )
         return result.all()
+
+@app.get("/liked-outfits")
+def liked_outfits():
+    with get_session() as session:
+        result = session.exec(
+            select(Selection)
+            .where(Selection.liked == True)
+            .order_by(Selection.created_at.desc())
+        )
+        liked = result.all()
+        
+        # Return ONLY liked outfits with full URLs
+        return [
+            {
+                "top": sel.top_url,
+                "bottom": sel.bottom_url,
+                "created": sel.created_at.isoformat()
+            }
+            for sel in liked
+        ]
