@@ -493,15 +493,34 @@ function renderProducts() {
             heart.classList.add("active");
         }
 
-        heart.onclick = (event) => {
-            event.stopPropagation();
-            toggleWishlist(item.url);
-            if (wishlist.has(item.url)) {
-                heart.classList.add("active");
-            } else {
-                heart.classList.remove("active");
-            }
-        };
+        heart.onclick = async (event) => {
+    event.stopPropagation();
+    
+    // Toggle wishlist (existing)
+    toggleWishlist(item.url);
+    if (wishlist.has(item.url)) {
+        heart.classList.add("active");
+    } else {
+        heart.classList.remove("active");
+        return; // don't mark as liked if un-hearting
+    }
+    
+    // NEW: Mark in database as liked
+    try {
+        const form = new FormData();
+        form.append("item_url", item.url);
+        const res = await fetch("/like-item", {
+            method: "POST",
+            body: form
+        });
+        const data = await res.json();
+        console.log("Liked in DB:", data);
+    } catch (e) {
+        console.error("DB like failed:", e);
+        // still works without DB
+    }
+};
+
 
         card.appendChild(img);
         card.appendChild(typeLabel);
