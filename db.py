@@ -13,6 +13,7 @@ class Selection(SQLModel, table=True):
     gender: str
     top_url: Optional[str] = None
     bottom_url: Optional[str] = None
+    liked: bool = Field(default=False)
 
 def init_db():
     SQLModel.metadata.create_all(engine)
