@@ -38,28 +38,25 @@
             border-radius: 4px;
         }
 
-        /* 1: upload */
+        /* layout regions */
         #upload-box {
             grid-column: 1;
             grid-row: 1 / span 2;
         }
 
-        /* 2: result */
         #result-box {
             grid-column: 2;
             grid-row: 1 / span 2;
         }
 
-        /* 3: search bar (top-right) */
         #search-bar-box {
             grid-column: 3;
             grid-row: 1;
         }
 
-        /* 4+5: combined Clothes (tops + bottoms) */
         #clothes-box {
             grid-column: 3;
-            grid-row: 2 / span 5; /* takes space of old tops + bottoms */
+            grid-row: 2 / span 5;
         }
 
         .products-two-col {
@@ -74,17 +71,15 @@
             font-size: 14px;
         }
 
-        /* combined saved sections row (wishlist + try-on) */
         #saved-sections {
             grid-column: 1 / span 2;
             grid-row: 4;
             padding: 8px;
             display: grid;
             grid-template-rows: auto auto;
-            row-gap: 4px;       /* spacing between the two inner boxes */
+            row-gap: 4px;
         }
 
-        /* inner boxes now sit inside saved-sections */
         #wishlist-section,
         #tryon-gallery-section {
             margin: 0;
@@ -180,7 +175,6 @@
             text-transform: uppercase;
         }
 
-        /* status message under upload+result */
         #statusMessage {
             grid-column: 1 / span 2;
             grid-row: 3;
@@ -190,7 +184,6 @@
             padding: 4px 0;
         }
 
-        /* wishlist bar */
         #wishlist-bar {
             display: flex;
             flex-wrap: wrap;
@@ -227,7 +220,6 @@
             line-height: 14px;
         }
 
-        /* try-on gallery */
         #tryon-gallery {
             display: flex;
             flex-wrap: wrap;
@@ -369,7 +361,11 @@ let currentFile = null;
 let selectedTop = null;
 let selectedBottom = null;
 
-let allProducts = [];   // { url, type, title }
+// track what last try-on request wanted
+let lastRequestedTop = null;
+let lastRequestedBottom = null;
+
+let allProducts = [];   // { url, type, title, color }
 let wishlist = new Set();
 let savedTryOns = [];   // base64 strings
 
@@ -379,6 +375,23 @@ const bottomsGrid = document.getElementById("bottoms-grid");
 const wishlistBar = document.getElementById("wishlist-bar");
 const searchInput = document.getElementById("searchInput");
 const tryonGallery = document.getElementById("tryon-gallery");
+
+// color guess from file name
+function guessColorFromName(name) {
+    name = name.toLowerCase();
+    if (name.includes("red")) return "red";
+    if (name.includes("black")) return "black";
+    if (name.includes("white")) return "white";
+    if (name.includes("blue")) return "blue";
+    if (name.includes("green")) return "green";
+    return "";
+}
+
+// status helper
+function setStatus(message, color = "black") {
+    statusDiv.textContent = message;
+    statusDiv.style.color = color;
+}
 
 // upload handler
 document.getElementById("inputImage").onchange = async function (e) {
@@ -391,11 +404,15 @@ document.getElementById("inputImage").onchange = async function (e) {
 
     selectedTop = null;
     selectedBottom = null;
+    lastRequestedTop = null;
+    lastRequestedBottom = null;
+
     topsGrid.innerHTML = "";
     bottomsGrid.innerHTML = "";
     document.getElementById("resultImage").src = "";
     document.getElementById("resultActions").style.display = "none";
 
+    setStatus("Analyzing your photo… finding your perfect fit.", "black");
     await classifyGenderAndLoadProducts(file);
 };
 
@@ -403,35 +420,33 @@ async function classifyGenderAndLoadProducts(file) {
     const form = new FormData();
     form.append("file", file);
 
-    statusDiv.style.color = "black";
-    statusDiv.textContent = "Detecting gender...";
+    try {
+        const res = await fetch("/classify-gender", { method: "POST", body: form });
+        const data = await res.json();
 
-    const res = await fetch("/classify-gender", { method: "POST", body: form });
-    const data = await res.json();
-
-    if (!res.ok) {
-        statusDiv.style.color = "red";
-        if (data.error === "no_person") {
-            statusDiv.textContent = "Invalid image: no person detected. Upload a full-body photo.";
-        } else if (data.error === "gender_unknown") {
-            statusDiv.textContent = "Could not detect gender. Try a clearer, front-facing image.";
-        } else {
-            statusDiv.textContent = "Classification failed.";
+        if (!res.ok) {
+            if (data.error === "no_person") {
+                setStatus("No full body found. Try a clear, full‑body photo.", "red");
+            } else if (data.error === "gender_unknown") {
+                setStatus("Could not understand the photo. Try a front‑facing pose.", "red");
+            } else {
+                setStatus("Could not read the photo right now. Please try again.", "red");
+            }
+            topsGrid.innerHTML = "";
+            bottomsGrid.innerHTML = "";
+            document.getElementById("resultImage").src = "";
+            return;
         }
-        topsGrid.innerHTML = "";
-        bottomsGrid.innerHTML = "";
-        document.getElementById("resultImage").src = "";
-        return;
+
+        currentGender = data.gender;
+        setStatus("Style mode on. Pick a top and a bottom to begin.", "green");
+
+        await loadProducts(currentGender);
+        renderProducts();
+        setStatus("Outfits ready. Tap a top and a bottom to try them on.", "green");
+    } catch (err) {
+        setStatus("Server is taking a short break. Please try again.", "red");
     }
-
-    currentGender = data.gender;
-    statusDiv.style.color = "green";
-    statusDiv.textContent =
-        "Detected: " + currentGender +
-        ". Click a TOP and a BOTTOM to try the full outfit.";
-
-    await loadProducts(currentGender);
-    renderProducts();
 }
 
 // load products from backend
@@ -444,12 +459,14 @@ async function loadProducts(gender) {
         const kind = (item.type || "").toLowerCase(); // "top" or "bottom"
         let name = url.split("/").pop().split(".")[0];
         name = name.replace(/[_\-]+/g, " ");
-        const title = (kind + " " + name).toLowerCase();
-        return { url, type: kind, title };
+
+        const color = guessColorFromName(name);
+        const title = (kind + " " + name + " " + color).toLowerCase();
+        return { url, type: kind, title, color };
     });
 }
 
-// split into tops and bottoms grids
+// show products
 function renderProducts() {
     topsGrid.innerHTML = "";
     bottomsGrid.innerHTML = "";
@@ -482,6 +499,19 @@ function renderProducts() {
             } else {
                 selectedBottom = item.url;
             }
+
+            // remember what this request is trying to apply
+            lastRequestedTop = selectedTop;
+            lastRequestedBottom = selectedBottom;
+
+            if (selectedTop && selectedBottom) {
+                setStatus("Applying your full outfit… just a moment.", "black");
+            } else if (selectedTop) {
+                setStatus("Applying the new top…", "black");
+            } else {
+                setStatus("Applying the new bottom…", "black");
+            }
+
             await autoTryOn();
         };
 
@@ -493,34 +523,17 @@ function renderProducts() {
             heart.classList.add("active");
         }
 
-        heart.onclick = async (event) => {
-    event.stopPropagation();
-    
-    // Toggle wishlist (existing)
-    toggleWishlist(item.url);
-    if (wishlist.has(item.url)) {
-        heart.classList.add("active");
-    } else {
-        heart.classList.remove("active");
-        return; // don't mark as liked if un-hearting
-    }
-    
-    // NEW: Mark in database as liked
-    try {
-        const form = new FormData();
-        form.append("item_url", item.url);
-        const res = await fetch("/like-item", {
-            method: "POST",
-            body: form
-        });
-        const data = await res.json();
-        console.log("Liked in DB:", data);
-    } catch (e) {
-        console.error("DB like failed:", e);
-        // still works without DB
-    }
-};
-
+        heart.onclick = (event) => {
+            event.stopPropagation();
+            toggleWishlist(item.url);
+            if (wishlist.has(item.url)) {
+                heart.classList.add("active");
+                setStatus("Saved to wishlist. Come back to this style anytime.", "green");
+            } else {
+                heart.classList.remove("active");
+                setStatus("Removed from wishlist.", "black");
+            }
+        };
 
         card.appendChild(img);
         card.appendChild(typeLabel);
@@ -539,11 +552,13 @@ searchInput.addEventListener("input", renderProducts);
 // try-on
 async function autoTryOn() {
     if (!currentFile) {
-        statusDiv.style.color = "red";
-        statusDiv.textContent = "Upload your photo first.";
+        setStatus("Upload your photo to start trying outfits.", "red");
         return;
     }
-    if (!selectedTop && !selectedBottom) return;
+    if (!selectedTop && !selectedBottom) {
+        setStatus("Select at least a top or a bottom to try on.", "red");
+        return;
+    }
 
     const form = new FormData();
     form.append("file", currentFile);
@@ -551,23 +566,38 @@ async function autoTryOn() {
     if (selectedBottom) form.append("bottom_url", selectedBottom);
     form.append("gender", currentGender);
 
-    statusDiv.style.color = "black";
-    statusDiv.textContent = "Applying outfit...";
+    // loading message already set before the call; keep it
 
-    const res = await fetch("/tryon", { method: "POST", body: form });
-    const data = await res.json();
+    try {
+        const res = await fetch("/tryon", { method: "POST", body: form });
+        const data = await res.json();
 
-    if (data.image_base64) {
-        document.getElementById("resultImage").src =
-            "data:image/png;base64," + data.image_base64;
-        document.getElementById("resultActions").style.display = "block";
-        statusDiv.style.color = "green";
-        statusDiv.textContent =
-            "Outfit applied. Change top/bottom or add to wishlist.";
-    } else {
-        statusDiv.style.color = "red";
-        statusDiv.textContent = "Error applying outfit.";
-        alert("Error: " + JSON.stringify(data));
+        if (data.image_base64) {
+            document.getElementById("resultImage").src =
+                "data:image/png;base64," + data.image_base64;
+            document.getElementById("resultActions").style.display = "block";
+
+            // success messages – no more “still catching up”
+            if (lastRequestedTop && lastRequestedBottom) {
+                setStatus("Full outfit ready. Love it? Save or switch pieces.", "green");
+            } else if (lastRequestedTop && !lastRequestedBottom) {
+                setStatus("New top applied. Bottom stays as it is.", "green");
+            } else if (!lastRequestedTop && lastRequestedBottom) {
+                setStatus("New bottom applied. Top stays as it is.", "green");
+            } else {
+                setStatus("Look updated.", "green");
+            }
+
+            // reset flags for next request
+            lastRequestedTop = null;
+            lastRequestedBottom = null;
+
+        } else {
+            setStatus("Could not style this outfit right now. Please try again.", "red");
+            alert("Error: " + JSON.stringify(data));
+        }
+    } catch (err) {
+        setStatus("Server is busy styling others. Try again in a few seconds.", "red");
     }
 }
 
@@ -609,6 +639,10 @@ function renderWishlist() {
                         else i.classList.remove("selected");
                     });
             }
+
+            lastRequestedTop = selectedTop;
+            lastRequestedBottom = selectedBottom;
+            setStatus("Re‑applying your saved look…", "black");
             await autoTryOn();
         };
 
@@ -625,6 +659,7 @@ function renderWishlist() {
                     heart.classList.remove("active");
                 }
             });
+            setStatus("Removed from wishlist.", "black");
         };
 
         wrap.appendChild(img);
@@ -647,6 +682,7 @@ document.getElementById("downloadBtn").onclick = function () {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setStatus("Look saved to your device. Share your style!", "green");
 };
 
 // save current try-on
@@ -656,9 +692,13 @@ document.getElementById("saveTryOnBtn").onclick = function () {
         alert("No try-on image to save yet.");
         return;
     }
-    if (savedTryOns.includes(img.src)) return;
+    if (savedTryOns.includes(img.src)) {
+        setStatus("This look is already in your saved try-ons.", "black");
+        return;
+    }
     savedTryOns.push(img.src);
     renderTryOnGallery();
+    setStatus("Look added to Saved Try‑On Images.", "green");
 };
 
 function renderTryOnGallery() {
@@ -676,6 +716,7 @@ function renderTryOnGallery() {
         removeBtn.onclick = () => {
             savedTryOns = savedTryOns.filter(s => s !== src);
             renderTryOnGallery();
+            setStatus("Removed from Saved Try‑On Images.", "black");
         };
 
         wrap.appendChild(image);
